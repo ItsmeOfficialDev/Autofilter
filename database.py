@@ -1,22 +1,36 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+import sqlite3
 
-Base = declarative_base()
+def init_db():
+    conn = sqlite3.connect('movies.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS posted_movies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tmdb_id INTEGER UNIQUE,
+            title TEXT,
+            language TEXT,
+            year INTEGER
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-class PostedMovie(Base):
-    __tablename__ = 'posted_movies'
-    
-    id = Column(Integer, primary_key=True)
-    tmdb_id = Column(Integer, unique=True, index=True)
-    title = Column(String)
-    language = Column(String)
-    year = Column(Integer)
-    posted = Column(Boolean, default=False)
+def is_movie_posted(tmdb_id):
+    conn = sqlite3.connect('movies.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT 1 FROM posted_movies WHERE tmdb_id = ?', (tmdb_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result is not None
 
-engine = create_engine('sqlite:///movies.db', echo=False)
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
+def mark_movie_posted(tmdb_id, title, language, year):
+    conn = sqlite3.connect('movies.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR IGNORE INTO posted_movies (tmdb_id, title, language, year)
+        VALUES (?, ?, ?, ?)
+    ''', (tmdb_id, title, language, year))
+    conn.commit()
+    conn.close()
 
-def get_session():
-    return Session()
+init_db()
