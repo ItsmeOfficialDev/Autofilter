@@ -118,6 +118,11 @@ class MovieAutoPoster:
             return False
     
     async def fetch_and_post_movies(self):
+        # Check if environment variables are set
+        if not Config.BOT_TOKEN or not Config.CHANNEL_ID:
+            logger.error("❌ BOT_TOKEN or CHANNEL_ID not set in environment variables")
+            return
+        
         total_start_time = time.time()
         await self.send_notification("🚀 Movie Auto-Poster Started! Fetching movies from all languages...")
         
@@ -165,13 +170,6 @@ async def main():
     await poster.fetch_and_post_movies()
 
 if __name__ == '__main__':
-    if not os.path.exists('.env'):
-        with open('.env', 'w') as f:
-            f.write("BOT_TOKEN=your_bot_token_here\n")
-            f.write("CHANNEL_ID=your_channel_id_here\n")
-        print("❌ Please fill .env file with your BOT_TOKEN and CHANNEL_ID")
-        exit(1)
-    
     print("🚀 Starting Movie Auto-Poster (One-Time Run)")
     print("📝 Bot will run for hours then stop automatically")
     print("💤 No 24/7 running needed")
@@ -179,4 +177,4 @@ if __name__ == '__main__':
     asyncio.run(main())
     
     print("✅ Bot finished! All movies posted.")
-    print("🛑 Bot stopped automatically")
+    print("🛑 Bot stopped automatically")telegram.error
