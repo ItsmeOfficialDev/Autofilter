@@ -3,6 +3,7 @@ import sqlite3
 def init_db():
     conn = sqlite3.connect('movies.db')
     cursor = conn.cursor()
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS posted_movies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -12,6 +13,7 @@ def init_db():
             year INTEGER
         )
     ''')
+    
     conn.commit()
     conn.close()
 
