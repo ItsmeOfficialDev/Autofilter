@@ -1,0 +1,182 @@
+import logging
+import asyncio
+import time
+import requests
+import os
+from datetime import datetime
+from telegram import Bot
+from telegram.error import TelegramError
+from config import Config
+from tmdb_handler import TMDBHandler
+from database import get_session, PostedMovie
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+class MovieAutoPoster:
+    def __init__(self):
+        self.bot = Bot(token=Config.BOT_TOKEN)
+        self.tmdb = TMDBHandler()
+        self.channel_id = Config.CHANNEL_ID
+        self.posted_count = 0
+        
+    async def send_notification(self, message):
+        try:
+            await self.bot.send_message(
+                chat_id=self.channel_id,
+                text=message
+            )
+        except Exception as e:
+            logger.error(f"Notification error: {e}")
+    
+    def format_movie_message(self, movie_details, language_tag):
+        title = movie_details.get('title', 'N/A')
+        original_title = movie_details.get('original_title', '')
+        year = movie_details.get('release_date', '')[:4] if movie_details.get('release_date') else 'N/A'
+        
+        if original_title and original_title != title:
+            display_title = f"{title} | {original_title}"
+        else:
+            display_title = title
+        
+        message = f"""🎬 Title : {display_title}
+🗓 Year : {year}
+🔊 Language : {language_tag}
+💿 Quality : HDRip
+
+⭐ Rating: {movie_details.get('vote_average', 'N/A')}/10
+📝 Overview: {movie_details.get('overview', 'No description available')}
+
+#Movie #AutoFilter"""
+        
+        return message
+    
+    def is_movie_posted(self, tmdb_id):
+        session = get_session()
+        try:
+            existing = session.query(PostedMovie).filter_by(tmdb_id=tmdb_id).first()
+            return existing is not None
+        finally:
+            session.close()
+    
+    def mark_movie_posted(self, tmdb_id, title, language, year):
+        session = get_session()
+        try:
+            movie = PostedMovie(
+                tmdb_id=tmdb_id,
+                title=title,
+                language=language,
+                year=year
+            )
+            session.add(movie)
+            session.commit()
+        finally:
+            session.close()
+    
+    async def post_movie_to_channel(self, movie, language_code, language_name, language_tag):
+        try:
+            if self.is_movie_posted(movie['id']):
+                logger.info(f"Already posted: {movie['title']}")
+                return True
+            
+            movie_details = self.tmdb.get_movie_details(movie['id'])
+            if not movie_details:
+                return False
+            
+            message = self.format_movie_message(movie_details, language_tag)
+            poster_path = movie_details.get('poster_path')
+            poster_url = self.tmdb.get_movie_poster(poster_path) if poster_path else None
+            
+            if poster_url:
+                await self.bot.send_photo(
+                    chat_id=self.channel_id,
+                    photo=poster_url,
+                    caption=message
+                )
+            else:
+                await self.bot.send_message(
+                    chat_id=self.channel_id,
+                    text=message
+                )
+            
+            year = movie_details.get('release_date', '')[:4]
+            if year and year.isdigit():
+                year = int(year)
+            else:
+                year = 0
+                
+            self.mark_movie_posted(movie['id'], movie_details.get('title', 'Unknown'), language_code, year)
+            self.posted_count += 1
+            logger.info(f"Posted: {movie['title']} ({language_name})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error posting {movie['title']}: {e}")
+            return False
+    
+    async def fetch_and_post_movies(self):
+        total_start_time = time.time()
+        await self.send_notification("🚀 Movie Auto-Poster Started! Fetching movies from all languages...")
+        
+        for lang_code, lang_name, lang_tag in Config.LANGUAGES:
+            try:
+                logger.info(f"Processing {lang_name} movies...")
+                await self.send_notification(f"📥 Fetching {lang_name} movies...")
+                
+                movies = self.tmdb.search_movies_by_year_range(lang_code, 1950, 2024)
+                logger.info(f"Found {len(movies)} {lang_name} movies")
+                await self.send_notification(f"📊 Found {len(movies)} {lang_name} movies. Posting...")
+                
+                successful_posts = 0
+                for i, movie in enumerate(movies):
+                    if await self.post_movie_to_channel(movie, lang_code, lang_name, lang_tag):
+                        successful_posts += 1
+                    
+                    await asyncio.sleep(1)
+                    
+                    if (i + 1) % 50 == 0:
+                        await self.send_notification(f"📈 {lang_name}: {i+1}/{len(movies)} processed")
+                
+                logger.info(f"Completed {lang_name}: {successful_posts}/{len(movies)} posted")
+                await self.send_notification(f"✅ {lang_name}: {successful_posts}/{len(movies)} posted")
+                
+            except Exception as e:
+                logger.error(f"Error processing {lang_name}: {e}")
+                await self.send_notification(f"❌ Error in {lang_name}: {str(e)}")
+        
+        total_time = time.time() - total_start_time
+        final_message = f"""
+🎉 MOVIE AUTO-POSTER COMPLETED! 🎉
+
+📊 Total Movies Posted: {self.posted_count}
+⏰ Total Time: {total_time/60:.2f} minutes
+📅 Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+All movies processed! Bot stopping...
+"""
+        await self.send_notification(final_message)
+        logger.info("Movie posting completed!")
+
+async def main():
+    poster = MovieAutoPoster()
+    await poster.fetch_and_post_movies()
+
+if __name__ == '__main__':
+    if not os.path.exists('.env'):
+        with open('.env', 'w') as f:
+            f.write("BOT_TOKEN=your_bot_token_here\n")
+            f.write("CHANNEL_ID=your_channel_id_here\n")
+        print("❌ Please fill .env file with your BOT_TOKEN and CHANNEL_ID")
+        exit(1)
+    
+    print("🚀 Starting Movie Auto-Poster (One-Time Run)")
+    print("📝 Bot will run for hours then stop automatically")
+    print("💤 No 24/7 running needed")
+    
+    asyncio.run(main())
+    
+    print("✅ Bot finished! All movies posted.")
+    print("🛑 Bot stopped automatically")
