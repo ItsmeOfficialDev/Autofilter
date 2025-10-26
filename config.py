@@ -14,5 +14,4 @@ class Config:
         ('en', 'English', '#English')
     ]
     
-    REQUESTS_PER_SECOND = 3
     DELAY_BETWEEN_REQUESTS = 0.34
