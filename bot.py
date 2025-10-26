@@ -177,4 +177,4 @@ if __name__ == '__main__':
     asyncio.run(main())
     
     print("✅ Bot finished! All movies posted.")
-    print("🛑 Bot stopped automatically")telegram.error
+    print("🛑 Bot stopped automatically")
