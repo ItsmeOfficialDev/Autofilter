@@ -1,11 +1,12 @@
 import logging
 import asyncio
 import time
-import requests
 import os
+import sys
 from datetime import datetime
 from telegram import Bot
 from telegram.error import TelegramError
+
 from config import Config
 from tmdb_handler import TMDBHandler
 from database import is_movie_posted, mark_movie_posted
@@ -101,15 +102,20 @@ class MovieAutoPoster:
             return
         
         total_start_time = time.time()
-        await self.send_notification("🚀 Movie Auto-Poster Started! Fetching movies from all languages...")
+        await self.send_notification("🚀 Movie Auto-Poster Started! Fetching movies...")
         
         for lang_code, lang_name, lang_tag in Config.LANGUAGES:
             try:
                 logger.info(f"Processing {lang_name} movies...")
                 await self.send_notification(f"📥 Fetching {lang_name} movies...")
                 
-                movies = self.tmdb.search_movies_by_year_range(lang_code, 1950, 2024)
+                movies = self.tmdb.search_movies(lang_code)
                 logger.info(f"Found {len(movies)} {lang_name} movies")
+                
+                if len(movies) == 0:
+                    await self.send_notification(f"❌ No {lang_name} movies found! Check TMDB API.")
+                    continue
+                
                 await self.send_notification(f"📊 Found {len(movies)} {lang_name} movies. Posting...")
                 
                 successful_posts = 0
@@ -119,7 +125,7 @@ class MovieAutoPoster:
                     
                     await asyncio.sleep(1)
                     
-                    if (i + 1) % 50 == 0:
+                    if (i + 1) % 20 == 0:
                         await self.send_notification(f"📈 {lang_name}: {i+1}/{len(movies)} processed")
                 
                 logger.info(f"Completed {lang_name}: {successful_posts}/{len(movies)} posted")
@@ -137,21 +143,22 @@ class MovieAutoPoster:
 ⏰ Total Time: {total_time/60:.2f} minutes
 📅 Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-All movies processed! Bot stopping...
+Bot will now STOP automatically.
 """
         await self.send_notification(final_message)
         logger.info("Movie posting completed!")
+        
+        # FORCE EXIT - PREVENT AUTO-RESTART
+        print("🛑 Bot finished successfully - Exiting now!")
+        sys.exit(0)
 
 async def main():
     poster = MovieAutoPoster()
     await poster.fetch_and_post_movies()
 
 if __name__ == '__main__':
-    print("🚀 Starting Movie Auto-Poster (One-Time Run)")
-    print("📝 Bot will run for hours then stop automatically")
-    print("💤 No 24/7 running needed")
+    print("🚀 Starting Movie Auto-Poster")
+    print("✅ This will run ONCE and then STOP automatically")
+    print("📝 No auto-restart issues")
     
     asyncio.run(main())
-    
-    print("✅ Bot finished! All movies posted.")
-    print("🛑 Bot stopped automatically")
