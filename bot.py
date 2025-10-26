@@ -8,7 +8,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 from config import Config
 from tmdb_handler import TMDBHandler
-from database import get_session, PostedMovie
+from database import is_movie_posted, mark_movie_posted
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -54,31 +54,9 @@ class MovieAutoPoster:
         
         return message
     
-    def is_movie_posted(self, tmdb_id):
-        session = get_session()
-        try:
-            existing = session.query(PostedMovie).filter_by(tmdb_id=tmdb_id).first()
-            return existing is not None
-        finally:
-            session.close()
-    
-    def mark_movie_posted(self, tmdb_id, title, language, year):
-        session = get_session()
-        try:
-            movie = PostedMovie(
-                tmdb_id=tmdb_id,
-                title=title,
-                language=language,
-                year=year
-            )
-            session.add(movie)
-            session.commit()
-        finally:
-            session.close()
-    
     async def post_movie_to_channel(self, movie, language_code, language_name, language_tag):
         try:
-            if self.is_movie_posted(movie['id']):
+            if is_movie_posted(movie['id']):
                 logger.info(f"Already posted: {movie['title']}")
                 return True
             
@@ -108,7 +86,7 @@ class MovieAutoPoster:
             else:
                 year = 0
                 
-            self.mark_movie_posted(movie['id'], movie_details.get('title', 'Unknown'), language_code, year)
+            mark_movie_posted(movie['id'], movie_details.get('title', 'Unknown'), language_code, year)
             self.posted_count += 1
             logger.info(f"Posted: {movie['title']} ({language_name})")
             return True
@@ -118,9 +96,8 @@ class MovieAutoPoster:
             return False
     
     async def fetch_and_post_movies(self):
-        # Check if environment variables are set
         if not Config.BOT_TOKEN or not Config.CHANNEL_ID:
-            logger.error("❌ BOT_TOKEN or CHANNEL_ID not set in environment variables")
+            logger.error("❌ BOT_TOKEN or CHANNEL_ID not set")
             return
         
         total_start_time = time.time()
